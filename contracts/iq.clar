@@ -1,30 +1,114 @@
+;; Smart Contract on Intellectual Property Protection - IntellectGuard
+;; Define error codes
+(define-constant ERR-NOT-AUTHORIZED (err u1000))
+(define-constant ERR-INVALID-HASH-LENGTH (err u1001))
+(define-constant ERR-HASH-ALL-ZEROS (err u1002))
+(define-constant ERR-HASH-ALREADY-REGISTERED (err u1003))
+(define-constant ERR-IP-NOT-FOUND (err u1004))
+(define-constant ERR-INVALID-IP-ID (err u1005))
+(define-constant ERR-IP-ID-OUT-OF-RANGE (err u1006))
 
-;; title: iq
-;; version:
-;; summary:
-;; description:
+;; Define the contract
+(define-data-var intellect-guard-owner principal tx-sender)
 
-;; traits
-;;
+;; Define a map to store IP registrations
+(define-map intellect-guard-registrations
+  { intellect-guard-id: uint }
+  { owner: principal, timestamp: uint, hash: (buff 32) }
+)
 
-;; token definitions
-;;
+;; Define a map to track registered hashes
+(define-map intellect-guard-hashes
+  { hash: (buff 32) }
+  { intellect-guard-id: uint }
+)
 
-;; constants
-;;
+;; Define a counter for IP IDs
+(define-data-var intellect-guard-counter uint u0)
 
-;; data vars
-;;
+;; Function to register new IP
+(define-public (register-intellect-guard (intellect-guard-hash (buff 32)))
+  (let
+    (
+      (new-id (+ (var-get intellect-guard-counter) u1))
+    )
+    ;; Perform input validation
+    (asserts! (is-eq (len intellect-guard-hash) u32) ERR-INVALID-HASH-LENGTH)
+    (asserts! (not (is-eq intellect-guard-hash 0x0000000000000000000000000000000000000000000000000000000000000000)) ERR-HASH-ALL-ZEROS)
+    (asserts! (is-none (map-get? intellect-guard-hashes { hash: intellect-guard-hash })) ERR-HASH-ALREADY-REGISTERED)
+    
+    ;; Register the IP
+    (map-set intellect-guard-registrations
+      { intellect-guard-id: new-id }
+      { owner: tx-sender, timestamp: block-height, hash: intellect-guard-hash }
+    )
+    ;; Track the registered hash
+    (map-set intellect-guard-hashes
+      { hash: intellect-guard-hash }
+      { intellect-guard-id: new-id }
+    )
+    (var-set intellect-guard-counter new-id)
+    (ok new-id)
+  )
+)
 
-;; data maps
-;;
+;; Function to check IP ownership
+(define-read-only (check-intellect-guard-ownership (intellect-guard-id uint))
+  (let
+    (
+      (intellect-guard-data (map-get? intellect-guard-registrations { intellect-guard-id: intellect-guard-id }))
+    )
+    (if (is-some intellect-guard-data)
+      (ok (get owner (unwrap-panic intellect-guard-data)))
+      ERR-IP-NOT-FOUND
+    )
+  )
+)
 
-;; public functions
-;;
+;; Function to verify IP hash
+(define-read-only (verify-intellect-guard-hash (intellect-guard-id uint) (hash-to-verify (buff 32)))
+  (let
+    (
+      (intellect-guard-data (map-get? intellect-guard-registrations { intellect-guard-id: intellect-guard-id }))
+    )
+    (if (is-some intellect-guard-data)
+      (ok (is-eq (get hash (unwrap-panic intellect-guard-data)) hash-to-verify))
+      ERR-IP-NOT-FOUND
+    )
+  )
+)
 
-;; read only functions
-;;
+;; Function to transfer IP ownership
+(define-public (transfer-intellect-guard (intellect-guard-id uint) (new-owner principal))
+  (let
+    (
+      (current-intellect-guard-counter (var-get intellect-guard-counter))
+    )
+    ;; Perform input validation
+    (asserts! (<= intellect-guard-id current-intellect-guard-counter) ERR-IP-ID-OUT-OF-RANGE)
+    (asserts! (> intellect-guard-id u0) ERR-INVALID-IP-ID)
+    
+    (let
+      (
+        (intellect-guard-data (map-get? intellect-guard-registrations { intellect-guard-id: intellect-guard-id }))
+      )
+      (asserts! (is-some intellect-guard-data) ERR-IP-NOT-FOUND)
+      (let
+        (
+          (unwrapped-intellect-guard-data (unwrap-panic intellect-guard-data))
+        )
+        (asserts! (is-eq tx-sender (get owner unwrapped-intellect-guard-data)) ERR-NOT-AUTHORIZED)
+        (map-set intellect-guard-registrations
+          { intellect-guard-id: intellect-guard-id }
+          (merge unwrapped-intellect-guard-data { owner: new-owner })
+        )
+        (ok true)
+      )
+    )
+  )
+)
 
-;; private functions
-;;
-
+;; Function to check if a hash is already registered
+(define-read-only (is-hash-registered (intellect-guard-hash (buff 32)))
+  (is-some (map-get? intellect-guard-hashes { hash: intellect-guard-hash }))
+)
