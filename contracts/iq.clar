@@ -52,3 +52,58 @@
   )
 )
 
+;; Function to check IP ownership
+(define-read-only (check-intellect-guard-ownership (intellect-guard-id uint))
+  (let
+    (
+      (intellect-guard-data (map-get? intellect-guard-registrations { intellect-guard-id: intellect-guard-id }))
+    )
+    (if (is-some intellect-guard-data)
+      (ok (get owner (unwrap-panic intellect-guard-data)))
+      ERR-IP-NOT-FOUND
+    )
+  )
+)
+
+;; Function to verify IP hash
+(define-read-only (verify-intellect-guard-hash (intellect-guard-id uint) (hash-to-verify (buff 32)))
+  (let
+    (
+      (intellect-guard-data (map-get? intellect-guard-registrations { intellect-guard-id: intellect-guard-id }))
+    )
+    (if (is-some intellect-guard-data)
+      (ok (is-eq (get hash (unwrap-panic intellect-guard-data)) hash-to-verify))
+      ERR-IP-NOT-FOUND
+    )
+  )
+)
+
+;; Function to transfer IP ownership
+(define-public (transfer-intellect-guard (intellect-guard-id uint) (new-owner principal))
+  (let
+    (
+      (current-intellect-guard-counter (var-get intellect-guard-counter))
+    )
+    ;; Perform input validation
+    (asserts! (<= intellect-guard-id current-intellect-guard-counter) ERR-IP-ID-OUT-OF-RANGE)
+    (asserts! (> intellect-guard-id u0) ERR-INVALID-IP-ID)
+    
+    (let
+      (
+        (intellect-guard-data (map-get? intellect-guard-registrations { intellect-guard-id: intellect-guard-id }))
+      )
+      (asserts! (is-some intellect-guard-data) ERR-IP-NOT-FOUND)
+      (let
+        (
+          (unwrapped-intellect-guard-data (unwrap-panic intellect-guard-data))
+        )
+        (asserts! (is-eq tx-sender (get owner unwrapped-intellect-guard-data)) ERR-NOT-AUTHORIZED)
+        (map-set intellect-guard-registrations
+          { intellect-guard-id: intellect-guard-id }
+          (merge unwrapped-intellect-guard-data { owner: new-owner })
+        )
+        (ok true)
+      )
+    )
+  )
+)
