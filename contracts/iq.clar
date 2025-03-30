@@ -107,3 +107,8 @@
     )
   )
 )
+
+;; Function to check if a hash is already registered
+(define-read-only (is-hash-registered (intellect-guard-hash (buff 32)))
+  (is-some (map-get? intellect-guard-hashes { hash: intellect-guard-hash }))
+)
